@@ -1,0 +1,43 @@
+{
+  "name": "notch",
+  "version": "0.1.0",
+  "private": true,
+  "license": "MIT",
+  "scripts": {
+    "dev": "concurrently -n web,convex -c cyan,gray \"next dev\" \"convex dev\"",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "setup": "node scripts/setup.mjs",
+    "notch": "node cli/build.mjs > /dev/null && node cli/dist/notch.mjs"
+  },
+  "dependencies": {
+    "@fontsource-variable/inter-tight": "^5.2.0",
+    "@fontsource-variable/public-sans": "^5.2.0",
+    "@fontsource/chivo-mono": "^5.2.0",
+    "@kinde-oss/kinde-auth-nextjs": "^2.13.2",
+    "convex": "^1.31.0",
+    "jose": "^6.2.12",
+    "next": "16.4.0",
+    "qrcode": "^1.5.4",
+    "react": "19.3.0",
+    "react-dom": "19.3.0"
+  },
+  "devDependencies": {
+    "@edge-runtime/vm": "^5.0.0",
+    "@types/node": "^22.20.5",
+    "@types/qrcode": "^1.5.6",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "concurrently": "^10.0.6",
+    "convex-test": "^0.0.38",
+    "esbuild": "^0.28.0",
+    "eslint": "^9",
+    "eslint-config-next": "16.4.0",
+    "tsx": "^4.23.15",
+    "typescript": "^5",
+    "vitest": "^3.2.0"
+  }
+}

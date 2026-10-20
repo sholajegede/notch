@@ -1,0 +1,24 @@
+/node_modules
+/.next/
+/out/
+/build
+/coverage
+.DS_Store
+*.pem
+npm-debug.log*
+.env*
+!.env.example
+.vercel
+*.tsbuildinfo
+next-env.d.ts
+/cli/dist
+/cli/node_modules
+
+# local working notes
+BUILD_PLAN.md
+BUILD_LOG.md
+CLAUDE.md
+AGENTS.md
+.agents/
+.claude/
+skills-lock.json
