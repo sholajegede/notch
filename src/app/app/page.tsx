@@ -54,13 +54,27 @@ export default async function Dashboard() {
         {view.links.length === 0 && (
           <section className="panel start">
             <h2>Start here</h2>
-            <p className="hint">Four steps show the whole idea. No billing account is needed.</p>
-            <ol>
-              <li><b>Make a link</b>Paste any link below.</li>
-              <li><b>Open it</b>Click the short link two or three times.</li>
-              <li><b>Break the meter</b>Use the button at the bottom of this page.</li>
-              <li><b>Reconcile</b>Watch Notch find the gap, fix it and keep the proof.</li>
-            </ol>
+            {simulated() ? (
+              <>
+                <p className="hint">Four steps show the whole idea. No billing account is needed.</p>
+                <ol>
+                  <li><b>Make a link</b>Paste any link below.</li>
+                  <li><b>Open it</b>Click the short link two or three times.</li>
+                  <li><b>Break the meter</b>Use the button at the bottom of this page.</li>
+                  <li><b>Reconcile</b>Watch Notch find the gap, fix it and keep the proof.</li>
+                </ol>
+              </>
+            ) : (
+              <>
+                <p className="hint">Four steps send real usage to your Kinde billing.</p>
+                <ol>
+                  <li><b>Connect billing</b>Add your Kinde agreement id and feature code at the bottom of this page.</li>
+                  <li><b>Make a link</b>Paste any link below.</li>
+                  <li><b>Open it</b>Click the short link a few times. Notch reports the total within a minute.</li>
+                  <li><b>Reconcile</b>Compare the ledger with the meter and keep the proof.</li>
+                </ol>
+              </>
+            )}
           </section>
         )}
 
