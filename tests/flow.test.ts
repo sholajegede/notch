@@ -18,8 +18,8 @@ async function start() {
 }
 type T = Awaited<ReturnType<typeof start>>["t"];
 
-const click = (t: T, code: string, key: string, extra: { agent?: string; ipHash?: string; at?: number } = {}) =>
-  t.mutation(api.ledger.recordClick, { serverKey, code, key, at: extra.at ?? Date.now(), agent: extra.agent ?? "Mozilla/5.0", ipHash: extra.ipHash ?? key });
+const click = (t: T, code: string, key: string, extra: { agent?: string; ipHash?: string; at?: number; meta?: Record<string, string> } = {}) =>
+  t.mutation(api.ledger.recordClick, { serverKey, code, key, at: extra.at ?? Date.now(), agent: extra.agent ?? "Mozilla/5.0", ipHash: extra.ipHash ?? key, meta: extra.meta });
 const view = (t: T) => t.query(api.ledger.overview, { serverKey, ownerId });
 const thisCycle = () => cycleOf(Date.now());
 
@@ -256,5 +256,63 @@ describe("the reconciler", () => {
     process.env.METER_DRIVER = "kinde"; // no agreement is connected, so there is no meter
     const results = await t.action(api.recon.reconcileNow, { serverKey, ownerId });
     expect(results.every((r) => r.verdict === "unreadable")).toBe(true);
+  });
+});
+
+describe("links and analytics", () => {
+  it("keeps where a click came from and summarises it for one link", async () => {
+    const { t, code } = await start();
+    await click(t, code, "a", { meta: { country: "NG", region: "LA", city: "Lagos", device: "Mobile", browser: "Chrome", os: "Android", referrer: "x.com" } });
+    await click(t, code, "b", { meta: { country: "NG", device: "Desktop", browser: "Safari", os: "macOS" } });
+    await click(t, code, "c", { meta: { country: "GB", city: "London", device: "Desktop", browser: "Chrome", os: "Windows" } });
+    await click(t, code, "d");
+    const page = await t.query(api.analytics.forLink, { serverKey, ownerId, code });
+    expect(page).not.toBeNull();
+    expect(page!.clicksThisCycle).toBe(4);
+    expect(page!.summary.sample).toBe(4);
+    expect(page!.summary.countries[0]).toEqual({ name: "NG", count: 2 });
+    expect(page!.summary.countries.find((c) => c.name === "Unknown")?.count).toBe(1);
+    expect(page!.summary.referrers.find((c) => c.name === "x.com")?.count).toBe(1);
+    expect(page!.summary.days.at(-1)?.count).toBe(4);
+    expect(page!.recent).toHaveLength(4);
+  });
+
+  it("shows a link only to its owner", async () => {
+    const { t, code } = await start();
+    expect(await t.query(api.analytics.forLink, { serverKey, ownerId: "someone_else", code })).toBeNull();
+    const account = await t.query(api.analytics.forAccount, { serverKey, ownerId: "someone_else" });
+    expect(account.summary.sample).toBe(0);
+  });
+
+  it("summarises all of an account's links together", async () => {
+    const { t, code } = await start();
+    const second = await t.mutation(api.ledger.createLink, { serverKey, ownerId, url: "https://example.com/two" });
+    await click(t, code, "a", { meta: { country: "NG" } });
+    await click(t, second.code, "b", { meta: { country: "NG" } });
+    const account = await t.query(api.analytics.forAccount, { serverKey, ownerId });
+    expect(account.summary.sample).toBe(2);
+    expect(account.summary.countries[0]).toEqual({ name: "NG", count: 2 });
+  });
+
+  it("renames a link, changes where it goes, and rejects a bad link", async () => {
+    const { t, code } = await start();
+    const saved = await t.mutation(api.ledger.updateLink, { serverKey, ownerId, code, title: " Menu ", url: "https://example.com/new" });
+    expect(saved.title).toBe("Menu");
+    const page = await t.query(api.analytics.forLink, { serverKey, ownerId, code });
+    expect(page!.link).toMatchObject({ title: "Menu", url: "https://example.com/new" });
+    await expect(t.mutation(api.ledger.updateLink, { serverKey, ownerId, code, url: "ftp://x" })).rejects.toThrow("http");
+    await expect(t.mutation(api.ledger.updateLink, { serverKey, ownerId: "someone_else", code, title: "x" })).rejects.toThrow("does not exist");
+  });
+
+  it("records no click on a turned-off link and keeps its history", async () => {
+    const { t, code } = await start();
+    await click(t, code, "a");
+    await t.mutation(api.ledger.updateLink, { serverKey, ownerId, code, disabled: true });
+    const refused = await click(t, code, "b");
+    expect(refused.recorded).toBe(false);
+    expect((await view(t)).total).toBe(1);
+    expect(await t.query(api.ledger.getLink, { serverKey, code })).toMatchObject({ disabled: true });
+    await t.mutation(api.ledger.updateLink, { serverKey, ownerId, code, disabled: false });
+    expect((await click(t, code, "c")).recorded).toBe(true);
   });
 });
