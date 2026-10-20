@@ -47,6 +47,14 @@ It prints requests a second and redirect times, then tells you what the ledger s
 
 What is not solved, and is outside this piece: Kinde's rate limits (not documented, so Notch backs off on 429), and abuse of short links, such as phishing. Add link review before you open sign-up to the public.
 
+## The dashboard
+
+`/app` is the overview: clicks this month, the last 7 days, a chart, and country, device, browser and referrer breakdowns across all your links. Each link has its own page with a 14-day chart, countries, regions, cities, devices, browsers, systems, referrers, the 25 latest clicks, a QR download, and settings to rename the link, change where it goes, or turn it off. Usage proof (the reconciliation, the ledger and the reports) and billing sit below on the overview.
+
+What Notch keeps about a click: the time, the country, region and city the host reports, the device, browser and system, and the referring site. It keeps a salted hash of the address, never the address itself. On Vercel the place comes from the platform's location headers. On your own machine there are none, so the place shows as Unknown. `node scripts/load.mjs` sends varied places and devices so you can see the charts filled in.
+
+The charts read the latest 2,000 clicks of a link or an account, so a page view stays cheap. When there are more, the page says so and shows "2,000+". The ledger still holds every click, and the bill is computed from the ledger, not from the charts.
+
 ## Run it on your machine
 
 ```bash
