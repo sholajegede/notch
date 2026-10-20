@@ -71,14 +71,14 @@ export function decide(e: Evidence): Decision {
 /** The same evidence always gives the same hash, so a repeat run adds no new record. */
 export const evidenceHash = (
   cycle: string,
-  e: Pick<Evidence, "ledger" | "lastSent" | "provider"> & { totalsOk?: boolean | null },
-): string => `${cycle}|${e.ledger}|${e.lastSent ?? "none"}|${e.provider ?? "unreadable"}|${e.totalsOk ?? "unchecked"}`;
+  e: Pick<Evidence, "ledger" | "lastSent" | "provider"> & { totalsOk?: boolean | null; note?: string },
+): string => `${cycle}|${e.ledger}|${e.lastSent ?? "none"}|${e.provider ?? "unreadable"}|${e.totalsOk ?? "unchecked"}|${e.note ?? ""}`;
 
 /**
  * Limits that keep each job small. A job that does too much in one run gets cut off, so every job works in pages.
  */
 /** A hot account would make one row a bottleneck. Counters are split over this many rows and added on read. */
-export const SHARDS = 8;
+export const SHARDS = 64;
 /** Ledger rows read in one page when the reconciler proves a total by scanning. */
 export const SCAN_PAGE = 1000;
 /** Cycles claimed by one batch of the reporter, and how many are sent at the same time. */
