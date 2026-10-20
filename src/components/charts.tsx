@@ -87,7 +87,7 @@ export function SampleNote({ summary, truncated }: { summary: Summary; truncated
   return (
     <p className="note-line">
       {truncated ? `Made from the latest ${n(summary.sample)} clicks. Older clicks are in the ledger but not in these charts.` : `Made from all ${n(summary.sample)} recorded clicks.`}
-      {" "}Place comes from the host&apos;s location headers, so it shows as Unknown when you run Notch on your own machine.
+      {" "}Place comes from the host&apos;s location headers. Where a host sends none, Notch looks it up from the address and keeps only the place, never the address.
     </p>
   );
 }

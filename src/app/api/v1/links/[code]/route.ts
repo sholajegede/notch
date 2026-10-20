@@ -33,3 +33,15 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ co
     return Response.json({ error: cleanError(error) }, { status: 400 });
   }
 }
+
+/** Delete a link. Its history stays in the ledger. */
+export async function DELETE(request: Request, { params }: { params: Promise<{ code: string }> }) {
+  const owner = await currentOwner(request);
+  if (!owner) return Response.json({ error: "Sign in first." }, { status: 401 });
+  const { code } = await params;
+  try {
+    return Response.json(await convex().mutation(api.ledger.deleteLink, { serverKey: serverKey(), ownerId: owner.id, code }));
+  } catch (error) {
+    return Response.json({ error: cleanError(error) }, { status: 400 });
+  }
+}

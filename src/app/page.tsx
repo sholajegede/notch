@@ -45,10 +45,10 @@ export default function Home() {
         <Banner />
         <Nav href={href} />
         <div className="wrap hero-body">
-          <h1>Every click, counted once.</h1>
+          <h1>Short links and QR codes with a bill you can check.</h1>
           <p className="lead">
-            Short links and QR codes that bill by the click. Notch writes each click to a ledger one time, sends the total to your
-            billing provider, and proves that the number on the invoice is the number that happened.
+            Notch charges by the click. It keeps its own record of every click, sends the total to your billing provider, and checks
+            that the number on the invoice is the number of clicks that really happened.
           </p>
           <div className="row">
             <a className="btn" href={href}>Make a link</a>

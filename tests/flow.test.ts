@@ -315,4 +315,19 @@ describe("links and analytics", () => {
     await t.mutation(api.ledger.updateLink, { serverKey, ownerId, code, disabled: false });
     expect((await click(t, code, "c")).recorded).toBe(true);
   });
+
+  it("deletes a link: it leaves the lists and stops working, and its clicks stay in the ledger", async () => {
+    const { t, code } = await start();
+    await click(t, code, "a");
+    await click(t, code, "b");
+    await expect(t.mutation(api.ledger.deleteLink, { serverKey, ownerId: "someone_else", code })).rejects.toThrow("does not exist");
+    await t.mutation(api.ledger.deleteLink, { serverKey, ownerId, code });
+    expect(await t.query(api.ledger.getLink, { serverKey, code })).toBeNull();
+    expect(await t.query(api.analytics.forLink, { serverKey, ownerId, code })).toBeNull();
+    expect((await view(t)).links.find((l) => l.code === code)).toBeUndefined();
+    expect((await click(t, code, "c")).recorded).toBe(false);
+    expect((await view(t)).total).toBe(2);
+    await expect(t.mutation(api.ledger.deleteLink, { serverKey, ownerId, code })).rejects.toThrow("does not exist");
+    await expect(t.mutation(api.ledger.updateLink, { serverKey, ownerId, code, title: "x" })).rejects.toThrow("does not exist");
+  });
 });

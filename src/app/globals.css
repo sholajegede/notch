@@ -340,3 +340,7 @@ input.plain { width: 100%; max-width: 560px; min-height: 48px; padding: 0 14px; 
   .bars { height: 120px; gap: 3px; }
   .band { font-size: 24px; margin-top: 40px; }
 }
+
+.danger { margin-top: 28px; padding-top: 20px; border-top: 1px solid var(--line, rgba(0,0,0,.12)); }
+.danger p { margin: 0 0 12px; max-width: 52ch; }
+.btn.danger-btn { background: #b3261e; color: #fff; }

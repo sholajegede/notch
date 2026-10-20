@@ -2,6 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { after } from "next/server";
 import { clickMeta } from "@/lib/click";
 import { convex, serverKey } from "@/lib/convex";
+import { lookupPlace } from "@/lib/place";
 import { site } from "@/lib/site";
 import { api } from "../../../../convex/_generated/api";
 
@@ -25,6 +26,8 @@ export async function GET(request: Request, { params }: { params: Promise<{ code
   const meta = clickMeta(request.headers, new URL(site.url).host);
   const ipHash = createHash("sha256").update(`${serverKey()}:${address}`).digest("hex").slice(0, 16);
   after(async () => {
+    // The host sends the place in production. Where it does not (localhost, other hosts), look it up here, after the redirect has gone.
+    if (!meta.country) Object.assign(meta, await lookupPlace(address));
     // The key was made here, so trying again is safe: the ledger counts a key once.
     // Many clicks at once can collide on a counter row. Wait a random, growing time so the retries do not collide again.
     for (let attempt = 1; attempt <= 5; attempt++) {

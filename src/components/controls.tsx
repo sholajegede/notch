@@ -122,7 +122,9 @@ export function CopyButton({ text }: { text: string }) {
 
 /** Rename a link, change where it goes, and turn it off or on. */
 export function LinkSettings({ code, title, url, disabled }: { code: string; title: string | null; url: string; disabled: boolean }) {
+  const router = useRouter();
   const { busy, error, done, run } = useAction();
+  const [sure, setSure] = useState(false);
   const [name, setName] = useState(title ?? "");
   const [destination, setDestination] = useState(url);
   const path = `/api/v1/links/${code}`;
@@ -152,6 +154,28 @@ export function LinkSettings({ code, title, url, disabled }: { code: string; tit
           </button>
         </div>
       </form>
+      <div className="danger">
+        {sure ? (
+          <>
+            <p>Delete this link? The short link stops working and leaves your list. Its past clicks stay in the ledger, so your bill and proof still match.</p>
+            <div className="field">
+              <button
+                type="button"
+                className="btn danger-btn"
+                disabled={busy}
+                onClick={async () => {
+                  if (await run(path, {}, undefined, "DELETE")) router.push("/app#links");
+                }}
+              >
+                {busy ? "Deleting…" : "Yes, delete it"}
+              </button>
+              <button type="button" className="btn light" disabled={busy} onClick={() => setSure(false)}>Keep it</button>
+            </div>
+          </>
+        ) : (
+          <button type="button" className="btn light" onClick={() => setSure(true)}>Delete link</button>
+        )}
+      </div>
       {done && <p className="notice" role="status">{done}</p>}
       {error && <p className="error">{error}</p>}
     </div>

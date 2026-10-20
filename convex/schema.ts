@@ -11,6 +11,8 @@ export default defineSchema({
     title: v.optional(v.string()),
     /** A turned-off link answers "gone" and records no click. Its history stays. */
     disabled: v.optional(v.boolean()),
+    /** A deleted link is gone from lists and answers "not found". Its clicks and ledger lines stay, because they were billed. */
+    deletedAt: v.optional(v.number()),
   })
     .index("by_code", ["code"])
     .index("by_owner", ["ownerId"]),

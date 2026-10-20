@@ -34,7 +34,7 @@ export default async function Overview() {
     <main className="page">
       <p className="eyebrow">{view.cycle} · {owner.email ?? owner.id}</p>
       <h1>Overview</h1>
-      <p className="sub">Every click is counted once. The ledger is what happened, and the provider&apos;s meter is a copy.</p>
+      <p className="sub">The ledger is what happened. The provider&apos;s meter is a copy, and Notch checks that the two agree.</p>
 
       <div className="tiles four">
         <div className="tile a"><span className="label">Clicks this month</span><span className="value">{n(view.total)}</span><span className="note">after bot corrections</span></div>

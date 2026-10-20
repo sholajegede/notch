@@ -21,7 +21,12 @@ export const createLink = mutation({
       throw new Error("That is not a link.");
     }
     if (!/^https?:$/.test(parsed.protocol) || url.length > 2048) throw new Error("Use a link that starts with http or https.");
-    const recent = await ctx.db.query("links").withIndex("by_owner", (q) => q.eq("ownerId", ownerId)).order("desc").take(MAX_LINKS);
+    const recent = await ctx.db
+      .query("links")
+      .withIndex("by_owner", (q) => q.eq("ownerId", ownerId))
+      .filter((q) => q.eq(q.field("deletedAt"), undefined))
+      .order("desc")
+      .take(MAX_LINKS);
     if (recent.length >= MAX_LINKS) throw new Error(`An account can have ${MAX_LINKS} links.`);
     if (recent.filter((l) => l.createdAt > Date.now() - 60_000).length >= LINKS_PER_MINUTE) throw new Error("Slow down. Wait a minute before making more links.");
     for (let tries = 0; tries < 8; tries++) {
@@ -41,7 +46,7 @@ export const getLink = query({
   handler: async (ctx, { serverKey, code }) => {
     guard(serverKey);
     const link = await ctx.db.query("links").withIndex("by_code", (q) => q.eq("code", code)).unique();
-    return link ? { url: link.url, ownerId: link.ownerId, disabled: link.disabled === true } : null;
+    return link && link.deletedAt === undefined ? { url: link.url, ownerId: link.ownerId, disabled: link.disabled === true } : null;
   },
 });
 
@@ -58,7 +63,7 @@ export const updateLink = mutation({
   handler: async (ctx, { serverKey, ownerId, code, title, url, disabled }) => {
     guard(serverKey);
     const link = await ctx.db.query("links").withIndex("by_code", (q) => q.eq("code", code)).unique();
-    if (!link || link.ownerId !== ownerId) throw new Error("This link does not exist.");
+    if (!link || link.ownerId !== ownerId || link.deletedAt !== undefined) throw new Error("This link does not exist.");
     const patch: { title?: string; url?: string; disabled?: boolean } = {};
     if (title !== undefined) {
       if (title.length > 80) throw new Error("Use a name of 80 characters or fewer.");
@@ -77,6 +82,21 @@ export const updateLink = mutation({
     if (disabled !== undefined) patch.disabled = disabled;
     await ctx.db.patch(link._id, patch);
     return { code, ...patch };
+  },
+});
+
+/**
+ * Delete a link. The link stops working and leaves the lists. Its clicks and ledger lines stay,
+ * because those clicks happened and were billed, and the reconciler needs them to match the meter.
+ */
+export const deleteLink = mutation({
+  args: { serverKey: v.string(), ownerId: v.string(), code: v.string() },
+  handler: async (ctx, { serverKey, ownerId, code }) => {
+    guard(serverKey);
+    const link = await ctx.db.query("links").withIndex("by_code", (q) => q.eq("code", code)).unique();
+    if (!link || link.ownerId !== ownerId || link.deletedAt !== undefined) throw new Error("This link does not exist.");
+    await ctx.db.patch(link._id, { deletedAt: Date.now() });
+    return { code };
   },
 });
 
@@ -107,7 +127,7 @@ export const recordClick = mutation({
   handler: async (ctx, { serverKey, code, key, at, agent, ipHash, meta }) => {
     guard(serverKey);
     const link = await ctx.db.query("links").withIndex("by_code", (q) => q.eq("code", code)).unique();
-    if (!link || link.disabled) return { recorded: false, duplicate: false };
+    if (!link || link.disabled || link.deletedAt !== undefined) return { recorded: false, duplicate: false };
     const entryKey = `click:${key}`;
     const inserted = await post(ctx, { entryKey, ownerId: link.ownerId, eventAt: at, units: 1, kind: "click", code });
     if (inserted) {
@@ -195,7 +215,12 @@ export const overview = query({
   handler: async (ctx, { serverKey, ownerId }) => {
     guard(serverKey);
     const cycle = cycleOf(Date.now());
-    const links = await ctx.db.query("links").withIndex("by_owner", (q) => q.eq("ownerId", ownerId)).order("desc").take(50);
+    const links = await ctx.db
+      .query("links")
+      .withIndex("by_owner", (q) => q.eq("ownerId", ownerId))
+      .filter((q) => q.eq(q.field("deletedAt"), undefined))
+      .order("desc")
+      .take(50);
     const recent = await ctx.db
       .query("ledger")
       .withIndex("by_owner_cycle", (q) => q.eq("ownerId", ownerId).eq("cycle", cycle))

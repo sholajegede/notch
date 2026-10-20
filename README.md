@@ -1,6 +1,6 @@
 # Notch
 
-Every click, counted once.
+Short links with a bill you can check.
 
 Notch makes short links and QR codes. Each click is one unit of metered usage. It is built to show one production problem: **how to prove that the usage you bill matches what happened**, when usage can arrive late, twice, or never.
 

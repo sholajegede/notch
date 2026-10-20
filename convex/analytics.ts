@@ -33,7 +33,7 @@ export const forLink = query({
   handler: async (ctx, { serverKey, ownerId, code }) => {
     guard(serverKey);
     const link = await ctx.db.query("links").withIndex("by_code", (q) => q.eq("code", code)).unique();
-    if (!link || link.ownerId !== ownerId) return null;
+    if (!link || link.ownerId !== ownerId || link.deletedAt !== undefined) return null;
     const cycle = cycleOf(Date.now());
     const rows = (await ctx.db.query("clicks").withIndex("by_code_at", (q) => q.eq("code", code)).order("desc").take(SAMPLE)).map(pick);
     return {
