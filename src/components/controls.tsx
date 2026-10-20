@@ -3,9 +3,9 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
-async function send(path: string, body?: unknown): Promise<{ ok: boolean; data: Record<string, unknown> }> {
+async function send(path: string, body?: unknown, method = "POST"): Promise<{ ok: boolean; data: Record<string, unknown> }> {
   const response = await fetch(path, {
-    method: "POST",
+    method,
     headers: { "content-type": "application/json" },
     body: JSON.stringify(body ?? {}),
   });
@@ -19,11 +19,11 @@ function useAction() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<string | null>(null);
-  const run = async (path: string, body?: unknown, message?: string) => {
+  const run = async (path: string, body?: unknown, message?: string, method?: string) => {
     setBusy(true);
     setError(null);
     setDone(null);
-    const { ok, data } = await send(path, body);
+    const { ok, data } = await send(path, body, method);
     setBusy(false);
     if (!ok) {
       setError(typeof data.error === "string" ? data.error : "That did not work.");
@@ -117,5 +117,43 @@ export function CopyButton({ text }: { text: string }) {
     >
       {done ? "Copied" : "Copy"}
     </button>
+  );
+}
+
+/** Rename a link, change where it goes, and turn it off or on. */
+export function LinkSettings({ code, title, url, disabled }: { code: string; title: string | null; url: string; disabled: boolean }) {
+  const { busy, error, done, run } = useAction();
+  const [name, setName] = useState(title ?? "");
+  const [destination, setDestination] = useState(url);
+  const path = `/api/v1/links/${code}`;
+  return (
+    <div>
+      <form
+        onSubmit={async (event) => {
+          event.preventDefault();
+          await run(path, { title: name, url: destination }, "Saved.", "PATCH");
+        }}
+      >
+        <label className="lbl" htmlFor="link-name">Name</label>
+        <input id="link-name" className="plain" maxLength={80} placeholder="A name you will recognise" value={name} onChange={(e) => setName(e.target.value)} />
+        <label className="lbl" htmlFor="link-dest">Where it goes</label>
+        <input id="link-dest" className="plain" type="url" required value={destination} onChange={(e) => setDestination(e.target.value)} />
+        <div className="field" style={{ marginTop: 16 }}>
+          <button className="btn" disabled={busy}>{busy ? "Saving…" : "Save"}</button>
+          <button
+            type="button"
+            className="btn light"
+            disabled={busy}
+            onClick={() =>
+              run(path, { disabled: !disabled }, disabled ? "The link is on again." : "The link is off. It shows a notice and counts no clicks.", "PATCH")
+            }
+          >
+            {disabled ? "Turn the link on" : "Turn the link off"}
+          </button>
+        </div>
+      </form>
+      {done && <p className="notice" role="status">{done}</p>}
+      {error && <p className="error">{error}</p>}
+    </div>
   );
 }
