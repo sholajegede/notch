@@ -22,13 +22,14 @@ export async function GET(request: Request, { params }: { params: Promise<{ code
   const ipHash = createHash("sha256").update(`${serverKey()}:${address}`).digest("hex").slice(0, 16);
   after(async () => {
     // The key was made here, so trying again is safe: the ledger counts a key once.
-    for (let attempt = 1; attempt <= 3; attempt++) {
+    // Many clicks at once can collide on a counter row. Wait a random, growing time so the retries do not collide again.
+    for (let attempt = 1; attempt <= 5; attempt++) {
       try {
         await client.mutation(api.ledger.recordClick, { serverKey: serverKey(), code, key, at, agent, ipHash });
         return;
       } catch (error) {
-        if (attempt === 3) console.error("Notch could not record a click", key, error);
-        else await new Promise((resolve) => setTimeout(resolve, 200 * attempt));
+        if (attempt === 5) console.error("Notch could not record a click", key, error);
+        else await new Promise((resolve) => setTimeout(resolve, 150 * 2 ** attempt + Math.random() * 300));
       }
     }
   });
