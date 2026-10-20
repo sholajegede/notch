@@ -15,7 +15,22 @@ if (!code) {
 const total = Number(values.clicks);
 const workers = Number(values.concurrency);
 const target = `${values.url.replace(/\/$/, "")}/s/${code}`;
-const agent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_0) AppleWebKit/605.1.15 Version/17.0 Safari/605.1.15";
+// A mix of visitors, so the dashboard has places, devices and referrers to chart.
+// The place headers are the ones Vercel sets. Notch reads them on a host that sets them, and this script sets them on your own machine.
+const agents = [
+  "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_0) AppleWebKit/605.1.15 Version/17.0 Safari/605.1.15",
+  "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 Version/17.0 Mobile/15E148 Safari/604.1",
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0 Safari/537.36",
+  "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 Chrome/120.0 Mobile Safari/537.36",
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0 Safari/537.36 Edg/120.0",
+  "Mozilla/5.0 (X11; Linux x86_64; rv:121.0) Gecko/20100101 Firefox/121.0",
+];
+const places = [
+  ["NG", "LA", "Lagos"], ["NG", "FC", "Abuja"], ["GB", "ENG", "London"], ["US", "CA", "San Francisco"], ["US", "NY", "New York"],
+  ["DE", "BE", "Berlin"], ["IN", "KA", "Bengaluru"], ["KE", "30", "Nairobi"], ["CA", "ON", "Toronto"], ["FR", "IDF", "Paris"],
+];
+const referrers = ["https://x.com/", "https://www.linkedin.com/", "https://news.ycombinator.com/", "https://dev.to/", "", "", ""];
+const pick = (list) => list[Math.floor(Math.random() * list.length)];
 
 let sent = 0;
 let next = 0;
@@ -27,7 +42,17 @@ async function worker() {
   while (next < total) {
     next += 1;
     // A different visitor address and request id each time, so none of these look like one bot or one retry.
-    const headers = { "user-agent": agent, "x-forwarded-for": `10.${(next >> 16) & 255}.${(next >> 8) & 255}.${next & 255}`, "x-request-id": randomUUID() };
+    const [country, region, city] = pick(places);
+    const headers = {
+      "user-agent": pick(agents),
+      "x-forwarded-for": `10.${(next >> 16) & 255}.${(next >> 8) & 255}.${next & 255}`,
+      "x-request-id": randomUUID(),
+      "x-vercel-ip-country": country,
+      "x-vercel-ip-country-region": region,
+      "x-vercel-ip-city": encodeURIComponent(city),
+    };
+    const from = pick(referrers);
+    if (from) headers.referer = from;
     const begin = performance.now();
     try {
       const response = await fetch(target, { redirect: "manual", headers });
