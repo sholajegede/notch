@@ -17,7 +17,7 @@ import {
   type Verdict,
 } from "./lib/core";
 import { guard } from "./lib/guard";
-import { isRateLimit, kindeMeter, type Meter } from "./lib/meter";
+import { addToKindeMeter, isRateLimit, kindeMeter, probeBackdate, probeBurst, type Meter } from "./lib/meter";
 import { cycleTotals, type CycleTotals } from "./lib/totals";
 
 type Billing = { agreementId: string; featureCode: string } | null;
@@ -255,12 +255,15 @@ export const record = internalMutation({
       const flagged = await ctx.db.query("review").withIndex("by_owner_cycle", (q) => q.eq("ownerId", args.ownerId).eq("cycle", args.cycle)).unique();
       if (flagged) await ctx.db.delete(flagged._id);
     }
-    // The same evidence gives the same hash. A repeat of the same finding adds no row.
-    const same = await ctx.db
+    // Compare with the latest finding for this cycle only. A repeat of the latest finding adds no row.
+    // A finding that matches an older row still counts: it shows the state changed back.
+    const latest = await ctx.db
       .query("reconciliations")
-      .withIndex("by_hash", (q) => q.eq("ownerId", args.ownerId).eq("cycle", args.cycle).eq("hash", args.hash))
+      .withIndex("by_owner", (q) => q.eq("ownerId", args.ownerId))
+      .order("desc")
+      .filter((q) => q.eq(q.field("cycle"), args.cycle))
       .first();
-    if (same && !args.repaired) return { id: same._id, created: false };
+    if (latest && latest.hash === args.hash && !args.repaired) return { id: latest._id, created: false };
     const id = await ctx.db.insert("reconciliations", { ...args, at: Date.now() });
     return { id, created: true };
   },
@@ -287,11 +290,13 @@ async function reconcile(ctx: ActionCtx, ownerId: string, cycle: string): Promis
   const truth = await scan(ctx, ownerId, cycle);
   const meter = meterFor(ctx, ownerId, snap.billing);
   let provider: number | null = null;
+  let readError = "";
   if (meter) {
     try {
       provider = await meter.read(cycle);
-    } catch {
+    } catch (error) {
       provider = null;
+      readError = error instanceof Error ? error.message : "The read failed.";
     }
   }
 
@@ -307,6 +312,7 @@ async function reconcile(ctx: ActionCtx, ownerId: string, cycle: string): Promis
   let repaired = false;
   let confirmed: boolean | null = null;
   let cause = decision.cause;
+  if (provider === null && readError) cause = `${cause} ${readError}`;
   if (decision.repair !== null && meter) {
     try {
       await meter.set(cycle, decision.repair);
@@ -323,7 +329,7 @@ async function reconcile(ctx: ActionCtx, ownerId: string, cycle: string): Promis
   await ctx.runMutation(internal.recon.record, {
     ownerId,
     cycle,
-    hash: evidenceHash(cycle, { ledger: truth.total, lastSent: snap.lastSent, provider, totalsOk }),
+    hash: evidenceHash(cycle, { ledger: truth.total, lastSent: snap.lastSent, provider, totalsOk, note: readError }),
     ledger: truth.total,
     lastSent: snap.lastSent,
     provider,
@@ -337,6 +343,47 @@ async function reconcile(ctx: ActionCtx, ownerId: string, cycle: string): Promis
   });
   return { cycle, verdict: decision.verdict, cause, ledger: truth.total, lastSent: snap.lastSent, provider, repaired, confirmed, totalsOk };
 }
+
+/**
+ * For testing against a real Kinde account. It adds a delta to the provider's total without a ledger entry,
+ * so the next reconcile has a real difference to find. Run it from the terminal:
+ *   npx convex run recon:liveDrift '{"ownerId":"<user id>","amount":6}'
+ */
+export const liveDrift = internalAction({
+  args: { ownerId: v.string(), amount: v.number() },
+  handler: async (ctx, { ownerId, amount }): Promise<string> => {
+    const snap = await ctx.runQuery(internal.recon.snapshot, { ownerId, cycle: cycleOf(Date.now()) });
+    if (!snap.billing) return "No Kinde billing is connected for this user.";
+    await addToKindeMeter(snap.billing, amount);
+    return `Added ${amount} to the Kinde meter with no ledger entry. Click Reconcile now.`;
+  },
+});
+
+/**
+ * For testing against a real Kinde account. It writes a total dated in a past cycle and prints what Kinde says.
+ *   npx convex run recon:liveBackdate '{"ownerId":"<user id>","value":1,"date":"2026-09-15"}'
+ */
+export const liveBackdate = internalAction({
+  args: { ownerId: v.string(), value: v.number(), date: v.string() },
+  handler: async (ctx, { ownerId, value, date }): Promise<Record<string, string>> => {
+    const snap = await ctx.runQuery(internal.recon.snapshot, { ownerId, cycle: cycleOf(Date.now()) });
+    if (!snap.billing) return { error: "No Kinde billing is connected for this user." };
+    return probeBackdate(snap.billing, value, date);
+  },
+});
+
+/**
+ * For testing against a real Kinde account. It sends a burst of writes that keep the total as it is and counts the answers.
+ *   npx convex run recon:liveBurst '{"ownerId":"<user id>","count":200,"parallel":20}'
+ */
+export const liveBurst = internalAction({
+  args: { ownerId: v.string(), count: v.number(), parallel: v.number() },
+  handler: async (ctx, { ownerId, count, parallel }): Promise<Record<string, unknown>> => {
+    const snap = await ctx.runQuery(internal.recon.snapshot, { ownerId, cycle: cycleOf(Date.now()) });
+    if (!snap.billing) return { error: "No Kinde billing is connected for this user." };
+    return probeBurst(snap.billing, Math.min(count, 1000), Math.min(parallel, 50));
+  },
+});
 
 export const hasCycle = internalQuery({
   args: { ownerId: v.string(), cycle: v.string() },
