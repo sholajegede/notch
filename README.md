@@ -29,12 +29,12 @@ Only the billing setup: a Kinde plan, a customer with an agreement, and a metere
 
 Everything that grows with clicks is kept small, so no job has to read or write a lot at once:
 
-- **Running totals are sharded.** Each account and cycle has 8 total rows, and each click adds to a random one, so many clicks at once rarely write the same row. A read adds 8 small rows. The same goes for each link.
+- **Running totals are sharded.** Each account and cycle has 64 total rows, and each click adds to a random one, so many clicks at once rarely write the same row. A read adds 64 small rows. The same goes for each link.
 - **The reporter claims and reads in one transaction.** A click that arrives after the read marks the cycle again, so it is never lost between the read and the send. It sends 100 cycles per batch, 10 at a time, and stops early if Kinde answers 429.
 - **A cycle is marked once.** A busy account does not write the mark again for each click, and many clicks in a minute become one report.
 - **Reads are bounded.** The dashboard reads 15 ledger rows and a few total rows. Only the reconciler reads the whole ledger, in pages of 1,000.
 - **The nightly reconcile walks in pages.** Each page is 50 accounts, 5 at a time, and schedules the next page, so no single run has to hold the whole night.
-- **A click is written after the redirect, with up to three tries.** The key is made before the first try, so a retry is safe.
+- **A click is written after the redirect, with up to five tries and a random, growing wait between them.** The key is made before the first try, so a retry is safe.
 - **Limits.** 1,000 links and 10 new links a minute for each account. A burst of 30 clicks from one address on one link within two minutes is judged a bot and corrected.
 
 These limits come from the design. They are not measured. To measure them against your own deployment:
@@ -81,7 +81,7 @@ npx convex env set KINDE_M2M_CLIENT_ID <your machine-to-machine client id>
 npx convex env set KINDE_M2M_CLIENT_SECRET <your machine-to-machine client secret>
 ```
 
-The machine-to-machine app needs the `create:meter_usage` scope. Set `METER_DRIVER=kinde` in `.env.local` too. Then, in the dashboard, connect the customer's Kinde agreement id and the feature code.
+The machine-to-machine app needs the `create:meter_usage` and `read:meter_usage` scopes. Set `METER_DRIVER=kinde` in `.env.local` too. Then, in the dashboard, connect the customer's Kinde agreement id and the feature code.
 
 ### What is verified and what is not
 
