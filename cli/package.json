@@ -1,0 +1,14 @@
+{
+  "name": "notch-cli",
+  "version": "0.1.0",
+  "description": "Short links and QR codes whose clicks are counted once, with a reconciler that proves your usage bill.",
+  "license": "MIT",
+  "type": "module",
+  "bin": { "notch": "dist/notch.mjs" },
+  "files": ["dist", "README.md"],
+  "engines": { "node": ">=20" },
+  "repository": { "type": "git", "url": "git+https://github.com/sholajegede/notch.git", "directory": "cli" },
+  "keywords": ["notch", "usage-billing", "reconciliation", "ledger", "kinde", "cli", "qr"],
+  "devDependencies": { "esbuild": "^0.28.0", "qrcode": "^1.5.4", "@types/qrcode": "^1.5.5" },
+  "scripts": { "build": "node build.mjs", "prepublishOnly": "node build.mjs" }
+}
