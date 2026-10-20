@@ -41,7 +41,42 @@ export const getLink = query({
   handler: async (ctx, { serverKey, code }) => {
     guard(serverKey);
     const link = await ctx.db.query("links").withIndex("by_code", (q) => q.eq("code", code)).unique();
-    return link ? { url: link.url, ownerId: link.ownerId } : null;
+    return link ? { url: link.url, ownerId: link.ownerId, disabled: link.disabled === true } : null;
+  },
+});
+
+/** Rename a link, change where it goes, or turn it off and on. A turned-off link keeps its history. */
+export const updateLink = mutation({
+  args: {
+    serverKey: v.string(),
+    ownerId: v.string(),
+    code: v.string(),
+    title: v.optional(v.string()),
+    url: v.optional(v.string()),
+    disabled: v.optional(v.boolean()),
+  },
+  handler: async (ctx, { serverKey, ownerId, code, title, url, disabled }) => {
+    guard(serverKey);
+    const link = await ctx.db.query("links").withIndex("by_code", (q) => q.eq("code", code)).unique();
+    if (!link || link.ownerId !== ownerId) throw new Error("This link does not exist.");
+    const patch: { title?: string; url?: string; disabled?: boolean } = {};
+    if (title !== undefined) {
+      if (title.length > 80) throw new Error("Use a name of 80 characters or fewer.");
+      patch.title = title.trim();
+    }
+    if (url !== undefined) {
+      let parsed: URL;
+      try {
+        parsed = new URL(url);
+      } catch {
+        throw new Error("That is not a link.");
+      }
+      if (!/^https?:$/.test(parsed.protocol) || url.length > 2048) throw new Error("Use a link that starts with http or https.");
+      patch.url = parsed.toString();
+    }
+    if (disabled !== undefined) patch.disabled = disabled;
+    await ctx.db.patch(link._id, patch);
+    return { code, ...patch };
   },
 });
 
@@ -57,15 +92,41 @@ export const recordClick = mutation({
     at: v.number(),
     agent: v.string(),
     ipHash: v.string(),
+    meta: v.optional(
+      v.object({
+        country: v.optional(v.string()),
+        region: v.optional(v.string()),
+        city: v.optional(v.string()),
+        device: v.optional(v.string()),
+        browser: v.optional(v.string()),
+        os: v.optional(v.string()),
+        referrer: v.optional(v.string()),
+      }),
+    ),
   },
-  handler: async (ctx, { serverKey, code, key, at, agent, ipHash }) => {
+  handler: async (ctx, { serverKey, code, key, at, agent, ipHash, meta }) => {
     guard(serverKey);
     const link = await ctx.db.query("links").withIndex("by_code", (q) => q.eq("code", code)).unique();
-    if (!link) return { recorded: false, duplicate: false };
+    if (!link || link.disabled) return { recorded: false, duplicate: false };
     const entryKey = `click:${key}`;
     const inserted = await post(ctx, { entryKey, ownerId: link.ownerId, eventAt: at, units: 1, kind: "click", code });
     if (inserted) {
-      await ctx.db.insert("clicks", { entryKey, code, ownerId: link.ownerId, at, agent: agent.slice(0, 200), ipHash });
+      const clean = (value: string | undefined) => (value ? value.slice(0, 80) : undefined);
+      await ctx.db.insert("clicks", {
+        entryKey,
+        code,
+        ownerId: link.ownerId,
+        at,
+        agent: agent.slice(0, 200),
+        ipHash,
+        country: clean(meta?.country),
+        region: clean(meta?.region),
+        city: clean(meta?.city),
+        device: clean(meta?.device),
+        browser: clean(meta?.browser),
+        os: clean(meta?.os),
+        referrer: clean(meta?.referrer),
+      });
       await ctx.scheduler.runAfter(JUDGE_AFTER_MS, internal.ledger.judge, { entryKey });
     }
     return { recorded: inserted, duplicate: !inserted };
@@ -155,7 +216,14 @@ export const overview = query({
       total: now.total,
       previous: { cycle: previousCycle(cycle), ...(await cycleTotals(ctx, ownerId, previousCycle(cycle))) },
       links: await Promise.all(
-        links.map(async (l) => ({ code: l.code, url: l.url, clicks: await linkClicks(ctx, l.code, cycle), createdAt: l.createdAt })),
+        links.map(async (l) => ({
+          code: l.code,
+          url: l.url,
+          title: l.title ?? null,
+          disabled: l.disabled === true,
+          clicks: await linkClicks(ctx, l.code, cycle),
+          createdAt: l.createdAt,
+        })),
       ),
       entries: recent.map((r) => ({
         entryKey: r.entryKey,

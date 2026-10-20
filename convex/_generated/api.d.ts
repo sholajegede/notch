@@ -8,8 +8,10 @@
  * @module
  */
 
+import type * as analytics from "../analytics.js";
 import type * as crons from "../crons.js";
 import type * as ledger from "../ledger.js";
+import type * as lib_analytics from "../lib/analytics.js";
 import type * as lib_core from "../lib/core.js";
 import type * as lib_guard from "../lib/guard.js";
 import type * as lib_meter from "../lib/meter.js";
@@ -25,8 +27,10 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  analytics: typeof analytics;
   crons: typeof crons;
   ledger: typeof ledger;
+  "lib/analytics": typeof lib_analytics;
   "lib/core": typeof lib_core;
   "lib/guard": typeof lib_guard;
   "lib/meter": typeof lib_meter;

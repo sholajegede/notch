@@ -7,6 +7,10 @@ export default defineSchema({
     url: v.string(),
     ownerId: v.string(),
     createdAt: v.number(),
+    /** A name for the owner to find the link by. */
+    title: v.optional(v.string()),
+    /** A turned-off link answers "gone" and records no click. Its history stays. */
+    disabled: v.optional(v.boolean()),
   })
     .index("by_code", ["code"])
     .index("by_owner", ["ownerId"]),
@@ -19,9 +23,19 @@ export default defineSchema({
     at: v.number(),
     agent: v.string(),
     ipHash: v.string(),
+    /** Where and on what the click came from. No address is kept. Missing on older clicks. */
+    country: v.optional(v.string()),
+    region: v.optional(v.string()),
+    city: v.optional(v.string()),
+    device: v.optional(v.string()),
+    browser: v.optional(v.string()),
+    os: v.optional(v.string()),
+    referrer: v.optional(v.string()),
   })
     .index("by_entryKey", ["entryKey"])
-    .index("by_ip", ["code", "ipHash", "at"]),
+    .index("by_ip", ["code", "ipHash", "at"])
+    .index("by_code_at", ["code", "at"])
+    .index("by_owner_at", ["ownerId", "at"]),
 
   /** The ledger. Rows are added and never edited. A correction is a new row with negative units. */
   ledger: defineTable({
