@@ -286,7 +286,7 @@ img { max-width: 100%; }
 .side-foot a { color: var(--soft); text-decoration: none; padding: 4px 0; }
 .side-foot a:hover { color: var(--black); text-decoration: underline; }
 .app-main { min-width: 0; }
-.page { max-width: 1120px; padding: 32px clamp(16px, 4vw, 48px) 96px; }
+.page { max-width: 1120px; margin-inline: auto; padding: 32px clamp(16px, 4vw, 48px) 96px; }
 .page h1 { font-size: clamp(36px, 5vw, 56px); line-height: 1.02; letter-spacing: -0.035em; margin: 16px 0 8px; overflow-wrap: anywhere; }
 .page .sub { color: var(--soft); font-size: 17px; line-height: 26px; max-width: 720px; overflow-wrap: anywhere; }
 .page .eyebrow a { text-decoration: none; }
