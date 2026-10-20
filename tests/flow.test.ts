@@ -186,6 +186,18 @@ describe("the reconciler", () => {
     expect((await view(t)).reconciliations).toHaveLength(count);
   });
 
+  it("records a match after a repair, even when an older row says the same", async () => {
+    const { t, code } = await start();
+    await click(t, code, "a");
+    await t.action(internal.recon.reportDue, {});
+    await t.action(api.recon.reconcileNow, { serverKey, ownerId }); // match
+    await t.mutation(api.sim.drift, { serverKey, ownerId, amount: 3 });
+    await t.action(api.recon.reconcileNow, { serverKey, ownerId }); // over-billed, repaired
+    await t.action(api.recon.reconcileNow, { serverKey, ownerId }); // match again: the latest state
+    const rows = (await view(t)).reconciliations.filter((r) => r.cycle === thisCycle());
+    expect(rows.map((r) => r.verdict)).toEqual(["match", "over_billed", "match"]);
+  });
+
   it("finds a late click that the last report missed", async () => {
     const { t, code } = await start();
     await click(t, code, "a");
