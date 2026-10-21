@@ -16,11 +16,12 @@ import {
   SEND_PARALLEL,
   type Verdict,
 } from "./lib/core";
+import { anchorOf } from "./lib/anchor";
 import { guard } from "./lib/guard";
-import { addToKindeMeter, isRateLimit, kindeMeter, probeBackdate, probeBurst, type Meter } from "./lib/meter";
+import { addToKindeMeter, isRateLimit, kindeMeter, probeBackdate, probeBurst, type BillingTarget, type Meter } from "./lib/meter";
 import { cycleTotals, type CycleTotals } from "./lib/totals";
 
-type Billing = { agreementId: string; featureCode: string } | null;
+type Billing = BillingTarget | null;
 
 /** The meter for this account: Kinde when METER_DRIVER is "kinde", the built-in stand-in otherwise. */
 function meterFor(ctx: ActionCtx, ownerId: string, billing: Billing): Meter | null {
@@ -83,18 +84,18 @@ export const claim = internalMutation({
     const claimed: Claimed[] = [];
     for (const row of rows) {
       await ctx.db.delete(row._id);
-      if (isClosed(row.cycle, Date.now())) {
+      const billing = await ctx.db.query("billing").withIndex("by_owner", (q) => q.eq("ownerId", row.ownerId)).unique();
+      if (isClosed(row.cycle, Date.now(), billing?.cycleStart)) {
         const flagged = await ctx.db.query("review").withIndex("by_owner_cycle", (q) => q.eq("ownerId", row.ownerId).eq("cycle", row.cycle)).unique();
         if (!flagged) await ctx.db.insert("review", { ownerId: row.ownerId, cycle: row.cycle, since: Date.now() });
         continue;
       }
       const totals = await cycleTotals(ctx, row.ownerId, row.cycle);
-      const billing = await ctx.db.query("billing").withIndex("by_owner", (q) => q.eq("ownerId", row.ownerId)).unique();
       claimed.push({
         ownerId: row.ownerId,
         cycle: row.cycle,
         total: totals.total,
-        billing: billing ? { agreementId: billing.agreementId, featureCode: billing.featureCode } : null,
+        billing: billing ? { agreementId: billing.agreementId, featureCode: billing.featureCode, cycleStart: billing.cycleStart } : null,
       });
     }
     return claimed;
@@ -173,7 +174,7 @@ export const snapshot = internalQuery({
     return {
       lastSent: lastSentRow ? lastSentRow.value : null,
       lastReportFailed: recent.length > 0 && recent[0].status === "failed",
-      billing: billing ? { agreementId: billing.agreementId, featureCode: billing.featureCode } : null,
+      billing: billing ? { agreementId: billing.agreementId, featureCode: billing.featureCode, cycleStart: billing.cycleStart } : null,
       totals: await cycleTotals(ctx, ownerId, cycle),
     };
   },
@@ -308,7 +309,7 @@ async function reconcile(ctx: ActionCtx, ownerId: string, cycle: string): Promis
     if (!totalsOk) await ctx.runMutation(internal.recon.rebuildTotals, { ownerId, cycle, observed: after.total, ...truth });
   }
 
-  const decision = decide({ ledger: truth.total, lastSent: snap.lastSent, provider, closed: isClosed(cycle, Date.now()), lastReportFailed: snap.lastReportFailed });
+  const decision = decide({ ledger: truth.total, lastSent: snap.lastSent, provider, closed: isClosed(cycle, Date.now(), snap.billing?.cycleStart), lastReportFailed: snap.lastReportFailed });
   let repaired = false;
   let confirmed: boolean | null = null;
   let cause = decision.cause;
@@ -352,7 +353,7 @@ async function reconcile(ctx: ActionCtx, ownerId: string, cycle: string): Promis
 export const liveDrift = internalAction({
   args: { ownerId: v.string(), amount: v.number() },
   handler: async (ctx, { ownerId, amount }): Promise<string> => {
-    const snap = await ctx.runQuery(internal.recon.snapshot, { ownerId, cycle: cycleOf(Date.now()) });
+    const snap = await ctx.runQuery(internal.recon.snapshot, { ownerId, cycle: await ctx.runQuery(internal.recon.currentCycle, { ownerId }) });
     if (!snap.billing) return "No Kinde billing is connected for this user.";
     await addToKindeMeter(snap.billing, amount);
     return `Added ${amount} to the Kinde meter with no ledger entry. Click Reconcile now.`;
@@ -366,7 +367,7 @@ export const liveDrift = internalAction({
 export const liveBackdate = internalAction({
   args: { ownerId: v.string(), value: v.number(), date: v.string() },
   handler: async (ctx, { ownerId, value, date }): Promise<Record<string, string>> => {
-    const snap = await ctx.runQuery(internal.recon.snapshot, { ownerId, cycle: cycleOf(Date.now()) });
+    const snap = await ctx.runQuery(internal.recon.snapshot, { ownerId, cycle: await ctx.runQuery(internal.recon.currentCycle, { ownerId }) });
     if (!snap.billing) return { error: "No Kinde billing is connected for this user." };
     return probeBackdate(snap.billing, value, date);
   },
@@ -379,10 +380,16 @@ export const liveBackdate = internalAction({
 export const liveBurst = internalAction({
   args: { ownerId: v.string(), count: v.number(), parallel: v.number() },
   handler: async (ctx, { ownerId, count, parallel }): Promise<Record<string, unknown>> => {
-    const snap = await ctx.runQuery(internal.recon.snapshot, { ownerId, cycle: cycleOf(Date.now()) });
+    const snap = await ctx.runQuery(internal.recon.snapshot, { ownerId, cycle: await ctx.runQuery(internal.recon.currentCycle, { ownerId }) });
     if (!snap.billing) return { error: "No Kinde billing is connected for this user." };
     return probeBurst(snap.billing, Math.min(count, 1000), Math.min(parallel, 50));
   },
+});
+
+/** The cycle this account is in now. It follows the agreement start when billing is connected. */
+export const currentCycle = internalQuery({
+  args: { ownerId: v.string() },
+  handler: async (ctx, { ownerId }): Promise<string> => cycleOf(Date.now(), await anchorOf(ctx, ownerId)),
 });
 
 export const hasCycle = internalQuery({
@@ -396,7 +403,7 @@ export const reconcileNow = action({
   args: { serverKey: v.string(), ownerId: v.string() },
   handler: async (ctx, { serverKey, ownerId }): Promise<Result[]> => {
     guard(serverKey);
-    const cycle = cycleOf(Date.now());
+    const cycle: string = await ctx.runQuery(internal.recon.currentCycle, { ownerId });
     const results: Result[] = [];
     const before = previousCycle(cycle);
     if (await ctx.runQuery(internal.recon.hasCycle, { ownerId, cycle: before })) results.push(await reconcile(ctx, ownerId, before));

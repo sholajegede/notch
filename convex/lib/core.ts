@@ -6,11 +6,35 @@
 /** The billing feature that counts clicks. It matches the feature code in Kinde. */
 export const FEATURE = "clicks";
 
-/** The billing cycle an event belongs to. The app picks it from the event time, in UTC. */
-export const cycleOf = (ms: number): string => new Date(ms).toISOString().slice(0, 7);
+/**
+ * The billing cycle an event belongs to, named by the month it starts in (for example 2026-10).
+ * With no anchor, a cycle is a calendar month in UTC. Kinde starts each cycle on the day and time the customer signed up,
+ * so an account that reports to Kinde passes that moment as the anchor. Every cycle then starts on the same day and time of the month.
+ */
+export const cycleOf = (ms: number, anchor?: number | null): string => {
+  const at = new Date(ms);
+  let year = at.getUTCFullYear();
+  let month = at.getUTCMonth();
+  if (anchor !== undefined && anchor !== null) {
+    const a = new Date(anchor);
+    const start = Date.UTC(year, month, a.getUTCDate(), a.getUTCHours(), a.getUTCMinutes(), a.getUTCSeconds(), a.getUTCMilliseconds());
+    if (ms < start) {
+      month -= 1;
+      if (month < 0) {
+        month = 11;
+        year -= 1;
+      }
+    }
+  }
+  return `${year}-${String(month + 1).padStart(2, "0")}`;
+};
 
 /** A cycle is closed when a later cycle has started. */
-export const isClosed = (cycle: string, nowMs: number): boolean => cycle < cycleOf(nowMs);
+export const isClosed = (cycle: string, nowMs: number, anchor?: number | null): boolean => cycle < cycleOf(nowMs, anchor);
+
+/** Every month has a 1st to a 28th, so a start on a later day has no clear meaning in a short month. */
+export const MAX_START_DAY = 28;
+export const validCycleStart = (ms: number): boolean => Number.isFinite(ms) && new Date(ms).getUTCDate() <= MAX_START_DAY;
 
 /** The cycle before this one, for example 2026-10 gives 2026-09. */
 export const previousCycle = (cycle: string): string => {

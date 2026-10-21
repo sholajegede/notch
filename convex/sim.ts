@@ -1,5 +1,6 @@
 import { v } from "convex/values";
 import { internalMutation, internalQuery, mutation } from "./_generated/server";
+import { anchorOf } from "./lib/anchor";
 import { cycleOf } from "./lib/core";
 import { guard } from "./lib/guard";
 
@@ -39,7 +40,7 @@ export const drift = mutation({
   args: { serverKey: v.string(), ownerId: v.string(), amount: v.number() },
   handler: async (ctx, { serverKey, ownerId, amount }) => {
     guard(serverKey);
-    const cycle = cycleOf(Date.now());
+    const cycle = cycleOf(Date.now(), await anchorOf(ctx, ownerId));
     const row = await ctx.db.query("simMeter").withIndex("by_owner_cycle", (q) => q.eq("ownerId", ownerId).eq("cycle", cycle)).unique();
     if (row) await ctx.db.patch(row._id, { value: row.value + amount });
     else await ctx.db.insert("simMeter", { ownerId, cycle, value: amount, failNext: 0 });
@@ -52,7 +53,7 @@ export const failNext = mutation({
   args: { serverKey: v.string(), ownerId: v.string(), count: v.number() },
   handler: async (ctx, { serverKey, ownerId, count }) => {
     guard(serverKey);
-    const cycle = cycleOf(Date.now());
+    const cycle = cycleOf(Date.now(), await anchorOf(ctx, ownerId));
     const row = await ctx.db.query("simMeter").withIndex("by_owner_cycle", (q) => q.eq("ownerId", ownerId).eq("cycle", cycle)).unique();
     if (row) await ctx.db.patch(row._id, { failNext: count });
     else await ctx.db.insert("simMeter", { ownerId, cycle, value: 0, failNext: count });

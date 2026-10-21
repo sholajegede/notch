@@ -330,4 +330,20 @@ describe("links and analytics", () => {
     await expect(t.mutation(api.ledger.deleteLink, { serverKey, ownerId, code })).rejects.toThrow("does not exist");
     await expect(t.mutation(api.ledger.updateLink, { serverKey, ownerId, code, title: "x" })).rejects.toThrow("does not exist");
   });
+
+  it("names cycles from the agreement start, and refuses to move the start after a click", async () => {
+    const { t, code } = await start();
+    const start1 = Date.now() - 5 * 86_400_000;
+    await t.mutation(api.ledger.connect, { serverKey, ownerId, agreementId: "agr_1", featureCode: "clicks", cycleStart: start1 });
+    const before = start1 - 60_000;
+    await click(t, code, "old", { at: before });
+    await click(t, code, "new");
+    const ledger = await t.run(async (ctx) => ctx.db.query("ledger").collect());
+    const cycles = new Map(ledger.map((r) => [r.entryKey, r.cycle]));
+    expect(cycles.get("click:new")).toBe(cycleOf(Date.now(), start1));
+    expect(cycles.get("click:old")).toBe(cycleOf(before, start1));
+    expect(cycles.get("click:old")).not.toBe(cycles.get("click:new"));
+    await expect(t.mutation(api.ledger.connect, { serverKey, ownerId, agreementId: "agr_1", featureCode: "clicks", cycleStart: start1 - 86_400_000 })).rejects.toThrow("before the first click");
+    await expect(t.mutation(api.ledger.connect, { serverKey, ownerId: "kp_other", agreementId: "agr_2", featureCode: "clicks", cycleStart: Date.UTC(2026, 9, 30) })).rejects.toThrow("1st to the 28th");
+  });
 });

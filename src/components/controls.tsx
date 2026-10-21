@@ -65,15 +65,16 @@ export function ReconcileButton() {
   );
 }
 
-export function ConnectForm({ current }: { current: { agreementId: string; featureCode: string } | null }) {
+export function ConnectForm({ current }: { current: { agreementId: string; featureCode: string; cycleStart: number | null } | null }) {
   const { busy, error, run } = useAction();
   const [agreement, setAgreement] = useState(current?.agreementId ?? "");
   const [feature, setFeature] = useState(current?.featureCode ?? "clicks");
+  const [start, setStart] = useState(current?.cycleStart ? new Date(current.cycleStart).toISOString().slice(0, 19) + "Z" : "");
   return (
     <form
       onSubmit={async (event) => {
         event.preventDefault();
-        await run("/api/v1/billing", { agreement_id: agreement, feature_code: feature });
+        await run("/api/v1/billing", { agreement_id: agreement, feature_code: feature, cycle_start: start });
       }}
     >
       <div className="field">
@@ -81,6 +82,17 @@ export function ConnectForm({ current }: { current: { agreementId: string; featu
         <input required placeholder="Feature code" value={feature} onChange={(e) => setFeature(e.target.value)} aria-label="Feature code" className="narrow" />
         <button className="btn light" disabled={busy}>{busy ? "Saving…" : current ? "Update" : "Connect"}</button>
       </div>
+      <label className="lbl" htmlFor="cycle-start">Agreement start (UTC)</label>
+      <input
+        id="cycle-start"
+        className="plain"
+        placeholder="2026-10-20T15:29:00Z"
+        value={start}
+        onChange={(e) => setStart(e.target.value)}
+        disabled={current?.cycleStart != null}
+        aria-describedby="cycle-help"
+      />
+      <p id="cycle-help" className="hint">Kinde starts each billing cycle on the day and time the customer signed up. Set this before the first click. Leave it empty to use calendar months.</p>
       {error && <p className="error">{error}</p>}
     </form>
   );

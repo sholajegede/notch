@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { BURST, cycleOf, decide, evidenceHash, isClosed, looksLikeBot, previousCycle } from "../convex/lib/core";
+import { BURST, cycleOf, decide, evidenceHash, isClosed, looksLikeBot, previousCycle, validCycleStart } from "../convex/lib/core";
 
 const base = { ledger: 100, lastSent: 100, provider: 100, closed: false, lastReportFailed: false };
 
@@ -16,6 +16,33 @@ describe("cycles", () => {
     const now = Date.UTC(2026, 10, 2);
     expect(isClosed("2026-10", now)).toBe(true);
     expect(isClosed("2026-11", now)).toBe(false);
+  });
+});
+
+describe("cycles that start when the agreement started", () => {
+  const anchor = Date.UTC(2026, 9, 20, 15, 29, 23);
+  it("starts each cycle on the same day and time of the month", () => {
+    expect(cycleOf(Date.UTC(2026, 9, 20, 15, 29, 22), anchor)).toBe("2026-09");
+    expect(cycleOf(Date.UTC(2026, 9, 20, 15, 29, 23), anchor)).toBe("2026-10");
+    expect(cycleOf(Date.UTC(2026, 10, 20, 15, 29, 22), anchor)).toBe("2026-10");
+    expect(cycleOf(Date.UTC(2026, 10, 20, 15, 29, 23), anchor)).toBe("2026-11");
+  });
+  it("names the cycle before the 20th of January as December of the year before", () => {
+    expect(cycleOf(Date.UTC(2027, 0, 5), anchor)).toBe("2026-12");
+  });
+  it("keeps the calendar month when there is no anchor", () => {
+    expect(cycleOf(Date.UTC(2026, 10, 5), undefined)).toBe("2026-11");
+    expect(cycleOf(Date.UTC(2026, 10, 5), null)).toBe("2026-11");
+  });
+  it("closes a cycle when the next one starts on the agreement day", () => {
+    const now = Date.UTC(2026, 10, 5);
+    expect(isClosed("2026-10", now, anchor)).toBe(false);
+    expect(isClosed("2026-10", Date.UTC(2026, 10, 21), anchor)).toBe(true);
+  });
+  it("accepts a start on the 1st to the 28th only", () => {
+    expect(validCycleStart(Date.UTC(2026, 9, 28))).toBe(true);
+    expect(validCycleStart(Date.UTC(2026, 9, 29))).toBe(false);
+    expect(validCycleStart(Number.NaN)).toBe(false);
   });
 });
 

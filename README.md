@@ -14,7 +14,7 @@
   <img src="https://img.shields.io/badge/Next.js-16-2f1b63" alt="Next.js 16">
   <img src="https://img.shields.io/badge/Convex-backend-c05100" alt="Convex backend">
   <img src="https://img.shields.io/badge/Kinde-metered%20billing-007f4a" alt="Kinde metered billing">
-  <img src="https://img.shields.io/badge/tests-52%20passing-714bd0" alt="52 tests passing">
+  <img src="https://img.shields.io/badge/tests-58%20passing-714bd0" alt="52 tests passing">
 </p>
 
 ![The Notch home page](docs/home.png)
@@ -153,7 +153,7 @@ flowchart TD
 
 **Closed cycles go to review, not to the meter.** Notch does not write to a cycle that has ended. It records the difference and leaves it for a person to decide.
 
-**The cycle is the UTC calendar month.** Kinde does not return cycle dates, so this is an assumption. It is listed under "What is verified and what is not".
+**A cycle starts when the agreement started.** Kinde's docs say each billing cycle is anchored to the customer's sign-up date, not the calendar month. Notch takes the agreement start (`cycle_start`) and starts every cycle on that day and time, in UTC. An account with no agreement start uses calendar months. The start is set before the first click, because cycles are named when a click is written.
 
 **Delete keeps the history.** A deleted link leaves the lists and answers "not found". Its clicks and ledger lines stay, because they were billed and the reconciler needs them to match the meter.
 
@@ -216,7 +216,11 @@ npx convex env set KINDE_M2M_CLIENT_ID <your machine-to-machine client id>
 npx convex env set KINDE_M2M_CLIENT_SECRET <your machine-to-machine client secret>
 ```
 
-The machine-to-machine app needs the `create:meter_usage` and `read:meter_usage` scopes. Set `METER_DRIVER=kinde` in `.env.local` too. Then, in the dashboard, connect the customer's Kinde agreement id and the feature code.
+The machine-to-machine app needs the `create:meter_usage` and `read:meter_usage` scopes. Set `METER_DRIVER=kinde` in `.env.local` too. Then, in the dashboard, connect the customer's Kinde agreement id, the feature code, and the moment the agreement started (UTC). Do this before the first click. The agreement start is on the user's Billing tab in Kinde. From the terminal:
+
+```bash
+npm run notch -- connect --agreement <agreement id> --feature clicks --cycle-start 2026-10-20T15:29:00Z
+```
 
 ### What is verified and what is not
 
@@ -229,10 +233,16 @@ Checked against a real Kinde account:
 - A write dated in a past month is accepted. It is stored as its own record and does not change the current total.
 - About 1,200 writes at roughly 180 a second all returned 200. Kinde did not answer 429.
 
-Not verified yet, and written here as assumptions:
+From Kinde's docs, not tested here:
 
-- How a billing cycle is bounded. The response has no dates, and Notch uses the calendar month in UTC.
-- What Kinde sends when it does rate limit, because it never did in testing.
+- Each billing cycle is anchored to the customer's sign-up date, and only monthly cycles exist. Recurring metered charges are billed in arrears, so usage appears on the next invoice.
+- `meter_usage_timestamp` is stored with a record. It does not choose a billing cycle or change the running total.
+- The API caps concurrent requests and answers 429 with a `RateLimit-Reset` header when a cap is hit. The docs give no number.
+
+Not verified yet:
+
+- The exact moment a cycle rolls over. The meter response has no cycle dates, so Notch starts its cycles on the agreement start you give it. The first rollover on the test agreement is on 21 November.
+- What a 429 looks like in practice, because Kinde never sent one in testing.
 - Whether a write for a past month changes an invoice. The first invoice on the test agreement is not due yet.
 
 ## Built for load
@@ -306,7 +316,8 @@ On Vercel and Cloudflare, the place of a click comes from the platform's headers
 ## Limits
 
 - Notch bills one feature, clicks, for one agreement per account.
-- The cycle is the UTC calendar month. A provider with other cycle dates needs a change in `convex/lib/core.ts`.
+- A cycle starts on the day and time of the agreement start, between the 1st and the 28th of a month. A start on the 29th to the 31st is refused.
+- The agreement start is set once, before the first click.
 - Only the current cycle can be read back from Kinde. An earlier cycle is proved from the ledger alone.
 - The charts read the latest 2,000 clicks of a link or an account. Older clicks stay in the ledger.
 - Reconciliation proves the meter against the ledger. It cannot see a click that never reached the ledger.

@@ -1,5 +1,6 @@
 import { v } from "convex/values";
 import { query } from "./_generated/server";
+import { anchorOf } from "./lib/anchor";
 import { cycleOf } from "./lib/core";
 import { SAMPLE, summarise, type ClickRow } from "./lib/analytics";
 import { guard } from "./lib/guard";
@@ -34,7 +35,7 @@ export const forLink = query({
     guard(serverKey);
     const link = await ctx.db.query("links").withIndex("by_code", (q) => q.eq("code", code)).unique();
     if (!link || link.ownerId !== ownerId || link.deletedAt !== undefined) return null;
-    const cycle = cycleOf(Date.now());
+    const cycle = cycleOf(Date.now(), await anchorOf(ctx, ownerId));
     const rows = (await ctx.db.query("clicks").withIndex("by_code_at", (q) => q.eq("code", code)).order("desc").take(SAMPLE)).map(pick);
     return {
       link: { code: link.code, url: link.url, title: link.title ?? null, disabled: link.disabled === true, createdAt: link.createdAt },

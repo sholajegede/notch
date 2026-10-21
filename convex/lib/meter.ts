@@ -1,5 +1,12 @@
 import { cycleOf } from "./core";
 
+/** The Kinde agreement and feature to write to, and when the agreement started. */
+export interface BillingTarget {
+  agreementId: string;
+  featureCode: string;
+  cycleStart?: number;
+}
+
 /** The provider's meter for one account and feature. */
 export interface Meter {
   /** The total the provider holds for the cycle, or null when it cannot say. */
@@ -72,7 +79,7 @@ async function api(path: string, init?: RequestInit, retried = false): Promise<R
 export const isRateLimit = (error: unknown): boolean => error instanceof Error && error.message.includes("(429)");
 
 /** For testing only: add to the provider's total with a delta write, as a report that was counted twice would. */
-export async function addToKindeMeter(billing: { agreementId: string; featureCode: string }, amount: number): Promise<void> {
+export async function addToKindeMeter(billing: BillingTarget, amount: number): Promise<void> {
   await api("/billing/meter_usage", {
     method: "POST",
     body: JSON.stringify({
@@ -88,7 +95,7 @@ export async function addToKindeMeter(billing: { agreementId: string; featureCod
  * For testing only: write a total dated in another cycle, then read the meter back two ways.
  * It shows how Kinde treats a write for a cycle that has ended.
  */
-export async function probeBackdate(billing: { agreementId: string; featureCode: string }, value: number, date: string): Promise<Record<string, string>> {
+export async function probeBackdate(billing: BillingTarget, value: number, date: string): Promise<Record<string, string>> {
   const out: Record<string, string> = {};
   try {
     const written = await api("/billing/meter_usage", {
@@ -130,9 +137,9 @@ export async function probeBackdate(billing: { agreementId: string; featureCode:
  * For testing only: send many absolute writes at once with the total the meter already holds, and count the answers.
  * It shows whether Kinde throttles, at what rate, and what the 429 answer carries. The total does not change.
  */
-export async function probeBurst(billing: { agreementId: string; featureCode: string }, count: number, parallel: number): Promise<Record<string, unknown>> {
+export async function probeBurst(billing: BillingTarget, count: number, parallel: number): Promise<Record<string, unknown>> {
   const token = await managementToken();
-  const current = await kindeMeter(billing).read(cycleOf(Date.now()));
+  const current = await kindeMeter(billing).read(cycleOf(Date.now(), billing.cycleStart));
   if (current === null) return { error: "Could not read the current total." };
   const answers: Record<string, number> = {};
   let retryAfter: string | null = null;
@@ -168,11 +175,11 @@ export async function probeBurst(billing: { agreementId: string; featureCode: st
   return { total: current, requests: count, parallel, seconds: Math.round((Date.now() - started) / 100) / 10, answers, retryAfter, sample429: sample };
 }
 
-export function kindeMeter(billing: { agreementId: string; featureCode: string }): Meter {
+export function kindeMeter(billing: BillingTarget): Meter {
   return {
     async read(cycle) {
       // Kinde returns the current cycle unless asked for all of them. Another cycle cannot be read this way.
-      if (cycle !== cycleOf(Date.now())) return null;
+      if (cycle !== cycleOf(Date.now(), billing.cycleStart)) return null;
       // The read endpoint's parameter names are not in Kinde's docs. The write uses billing_feature_code, and the read asked for "the feature code". Send both spellings.
       const query = new URLSearchParams({
         customer_agreement_id: billing.agreementId,

@@ -16,7 +16,7 @@ Usage
   notch ledger                      Show the ledger for this cycle
   notch tail                        Watch new ledger lines as they are written
   notch reconcile                   Compare the ledger, what was sent, and the provider's meter. Repair and prove.
-  notch connect --agreement <id>    Choose the Kinde billing agreement to report to
+  notch connect --agreement <id> [--cycle-start <date>]   Choose the Kinde billing agreement to report to
   notch backfill <file.json>        Send late clicks: [{ "key": "...", "code": "...", "at": 1760000000000 }]
   notch whoami                      Show your account
   notch logout                      Remove the sign-in from this computer
@@ -37,6 +37,7 @@ const options = {
   json: { type: "boolean" },
   server: { type: "string" },
   agreement: { type: "string" },
+  "cycle-start": { type: "string" },
   feature: { type: "string" },
   amount: { type: "string" },
   count: { type: "string" },
@@ -52,7 +53,7 @@ interface Overview {
   total: number;
   links: { code: string; url: string; clicks: number; short_url?: string }[];
   entries: Entry[];
-  billing: { agreementId: string; featureCode: string } | null;
+  billing: { agreementId: string; featureCode: string; cycleStart: number | null } | null;
 }
 interface Result {
   cycle: string;
@@ -188,7 +189,7 @@ async function main(argv: string[]): Promise<number> {
       const { data } = await call<{ connected: boolean; feature_code: string }>("/api/v1/billing", {
         method: "POST",
         server,
-        body: { agreement_id: flag.agreement, feature_code: flag.feature },
+        body: { agreement_id: flag.agreement, feature_code: flag.feature, cycle_start: flag["cycle-start"] },
       });
       out(`Connected. Clicks are reported to feature "${data.feature_code}".`, data);
       return 0;

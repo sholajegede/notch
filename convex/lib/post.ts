@@ -1,4 +1,5 @@
 import type { MutationCtx } from "../_generated/server";
+import { anchorOf } from "./anchor";
 import { cycleOf, FEATURE, isClosed, SHARDS } from "./core";
 
 export interface Entry {
@@ -26,7 +27,8 @@ export async function post(ctx: MutationCtx, entry: Entry): Promise<boolean> {
     .unique();
   if (existing) return false;
 
-  const cycle = cycleOf(entry.eventAt);
+  const anchor = await anchorOf(ctx, entry.ownerId);
+  const cycle = cycleOf(entry.eventAt, anchor);
   const now = Date.now();
   await ctx.db.insert("ledger", { ...entry, feature: FEATURE, cycle, recordedAt: now });
 
@@ -68,7 +70,7 @@ export async function post(ctx: MutationCtx, entry: Entry): Promise<boolean> {
     else await ctx.db.insert("linkTotals", { code: entry.code, cycle, shard, units: entry.units });
   }
 
-  if (isClosed(cycle, now)) {
+  if (isClosed(cycle, now, anchor)) {
     // The meter is not written for a closed cycle. Flag it so the reconciler looks at it.
     const flagged = await ctx.db
       .query("review")

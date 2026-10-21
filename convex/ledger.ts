@@ -1,7 +1,8 @@
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
 import { internalMutation, mutation, query } from "./_generated/server";
-import { BURST, cycleOf, isClosed, LINKS_PER_MINUTE, looksLikeBot, MAX_LINKS, previousCycle } from "./lib/core";
+import { anchorOf } from "./lib/anchor";
+import { BURST, cycleOf, isClosed, LINKS_PER_MINUTE, looksLikeBot, MAX_LINKS, previousCycle, validCycleStart } from "./lib/core";
 import { guard } from "./lib/guard";
 import { post } from "./lib/post";
 import { cycleTotals, linkClicks } from "./lib/totals";
@@ -193,6 +194,7 @@ export const backfill = mutation({
     let duplicates = 0;
     let inClosedCycle = 0;
     const now = Date.now();
+    const anchor = await anchorOf(ctx, ownerId);
     for (const click of clicks) {
       const link = await ctx.db.query("links").withIndex("by_code", (q) => q.eq("code", click.code)).unique();
       if (!link || link.ownerId !== ownerId) continue;
@@ -203,7 +205,7 @@ export const backfill = mutation({
         continue;
       }
       inserted += 1;
-      if (isClosed(cycleOf(click.at), now)) inClosedCycle += 1;
+      if (isClosed(cycleOf(click.at, anchor), now, anchor)) inClosedCycle += 1;
       await ctx.db.insert("clicks", { entryKey, code: click.code, ownerId, at: click.at, agent: "backfill", ipHash: "backfill" });
     }
     return { inserted, duplicates, inClosedCycle };
@@ -214,7 +216,8 @@ export const overview = query({
   args: { serverKey: v.string(), ownerId: v.string() },
   handler: async (ctx, { serverKey, ownerId }) => {
     guard(serverKey);
-    const cycle = cycleOf(Date.now());
+    const billing = await ctx.db.query("billing").withIndex("by_owner", (q) => q.eq("ownerId", ownerId)).unique();
+    const cycle = cycleOf(Date.now(), billing?.cycleStart);
     const links = await ctx.db
       .query("links")
       .withIndex("by_owner", (q) => q.eq("ownerId", ownerId))
@@ -232,7 +235,6 @@ export const overview = query({
       .order("desc")
       .take(8);
     const reconciliations = await ctx.db.query("reconciliations").withIndex("by_owner", (q) => q.eq("ownerId", ownerId)).order("desc").take(8);
-    const billing = await ctx.db.query("billing").withIndex("by_owner", (q) => q.eq("ownerId", ownerId)).unique();
     const waiting = await ctx.db.query("dirty").withIndex("by_owner_cycle", (q) => q.eq("ownerId", ownerId)).collect();
     const review = await ctx.db.query("review").withIndex("by_owner_cycle", (q) => q.eq("ownerId", ownerId)).collect();
     const now = await cycleTotals(ctx, ownerId, cycle);
@@ -274,7 +276,7 @@ export const overview = query({
         corrections: r.corrections,
         at: r.at,
       })),
-      billing: billing ? { agreementId: billing.agreementId, featureCode: billing.featureCode } : null,
+      billing: billing ? { agreementId: billing.agreementId, featureCode: billing.featureCode, cycleStart: billing.cycleStart ?? null } : null,
       waiting: waiting.map((w) => ({ cycle: w.cycle })),
       review: review.map((r) => ({ cycle: r.cycle })),
     };
@@ -282,14 +284,23 @@ export const overview = query({
 });
 
 export const connect = mutation({
-  args: { serverKey: v.string(), ownerId: v.string(), agreementId: v.string(), featureCode: v.string() },
-  handler: async (ctx, { serverKey, ownerId, agreementId, featureCode }) => {
+  args: { serverKey: v.string(), ownerId: v.string(), agreementId: v.string(), featureCode: v.string(), cycleStart: v.optional(v.number()) },
+  handler: async (ctx, { serverKey, ownerId, agreementId, featureCode, cycleStart }) => {
     guard(serverKey);
+    if (cycleStart !== undefined && !validCycleStart(cycleStart)) {
+      throw new Error("Use an agreement start on the 1st to the 28th of a month, in UTC.");
+    }
     const existing = await ctx.db.query("billing").withIndex("by_owner", (q) => q.eq("ownerId", ownerId)).unique();
-    if (existing) await ctx.db.patch(existing._id, { agreementId, featureCode });
-    else await ctx.db.insert("billing", { ownerId, agreementId, featureCode });
+    const before = existing?.cycleStart;
+    // Cycles are named when a click is written. Moving the start later would split clicks between two naming schemes.
+    if (cycleStart !== before && cycleStart !== undefined) {
+      const first = await ctx.db.query("ledger").withIndex("by_owner_cycle", (q) => q.eq("ownerId", ownerId)).first();
+      if (first) throw new Error("The agreement start is set before the first click. This account already has clicks.");
+    }
+    if (existing) await ctx.db.patch(existing._id, { agreementId, featureCode, cycleStart: cycleStart ?? existing.cycleStart });
+    else await ctx.db.insert("billing", { ownerId, agreementId, featureCode, cycleStart });
     // Clicks counted before billing was connected still need to be reported.
-    const cycle = cycleOf(Date.now());
+    const cycle = cycleOf(Date.now(), cycleStart ?? before);
     const marked = await ctx.db.query("dirty").withIndex("by_owner_cycle", (q) => q.eq("ownerId", ownerId).eq("cycle", cycle)).unique();
     if (!marked) await ctx.db.insert("dirty", { ownerId, cycle, markedAt: Date.now() });
     return { ok: true };

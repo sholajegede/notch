@@ -140,6 +140,8 @@ export default defineSchema({
     ownerId: v.string(),
     agreementId: v.string(),
     featureCode: v.string(),
+    /** When the agreement started. Kinde starts each billing cycle on this day and time. Empty means calendar months. */
+    cycleStart: v.optional(v.number()),
   }).index("by_owner", ["ownerId"]),
 
   /** A stand-in for the provider's meter, so Notch runs with no Kinde settings. */
